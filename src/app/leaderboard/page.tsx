@@ -1,11 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Trophy, Crown, Medal } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2 } from "lucide-react";
 import Ripple_bg from "../../components/Ripple_bg";
 import Navbar from "../../components/navbar";
 
-const teams = [
+interface LeaderboardUser {
+  id: number;
+  username: string;
+  score: number;
+  last_solved_at: string;
+  created_at: string;
+}
+
+interface LeaderboardResponse {
+  users: LeaderboardUser[];
+  current_page: number;
+  total_pages: number;
+  total_users: number;
+  limit: number;
+}
+
+// Fallback sample data
+const sampleTeams = [
   { rank: 1, name: "CipherBreakers", question: 14 },
   { rank: 2, name: "QuantumRiddlers", question: 13 },
   { rank: 3, name: "DarkPharaoh", question: 12 },
@@ -16,16 +33,6 @@ const teams = [
   { rank: 8, name: "VortexMinds", question: 7 },
   { rank: 9, name: "CipherBreakers", question: 6 },
   { rank: 10, name: "QuantumRiddlers", question: 5 },
-  { rank: 11, name: "DarkPharaoh", question: 4 },
-  { rank: 12, name: "NightOwls", question: 4 },
-  { rank: 13, name: "ByteHunters", question: 4 },
-  { rank: 14, name: "Enigma404", question: 3 },
-  { rank: 15, name: "ShadowDecoders", question: 3 },
-  { rank: 16, name: "VortexMinds", question: 2 },
-  { rank: 17, name: "AlphaCoders", question: 2 },
-  { rank: 18, name: "BetaBrains", question: 1 },
-  { rank: 19, name: "GammaGuild", question: 1 },
-  { rank: 20, name: "DeltaForce", question: 1 },
 ];
 
 const ITEMS_PER_PAGE = 10;
@@ -45,50 +52,97 @@ const rankIcon = (rank: number) => {
 };
 
 export default function Leaderboard() {
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalUsers, setTotalUsers] = useState(0);
   const [fontSize, setFontSize] = useState(140);
-  const [teamsList, setTeamsList] = useState(teams);
+  const [teams, setTeams] = useState<{ rank: number; name: string; question: number }[]>(sampleTeams);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUsingApi, setIsUsingApi] = useState(false);
 
-  useEffect(() => {
-    // Fetch leaderboard from backend
-    fetch("/api/leaderboard")
-      .then((res) => {
-        if (!res.ok) return null; // Avoid throw to prevent Next.js dev overlay
-        return res.json();
-      })
-      .then((data) => {
-        if (data && Array.isArray(data) && data.length > 0) {
-          setTeamsList(data);
-        }
-      })
-      .catch((error) => {
-        console.error("Failed to fetch leaderboard, using sample data", error);
-      });
+  const fetchLeaderboard = useCallback(async (pageNum: number) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(
+        `http://localhost:8080/user/leaderboard?page=${pageNum}&limit=${ITEMS_PER_PAGE}`
+      );
+      if (!res.ok) throw new Error("API error");
+      const data: LeaderboardResponse = await res.json();
+
+      if (data && data.users && data.users.length > 0) {
+        setIsUsingApi(true);
+        const mapped = data.users.map((user, index) => ({
+          rank: (data.current_page - 1) * data.limit + index + 1,
+          name: user.username,
+          question: user.score,
+        }));
+        setTeams(mapped);
+        setPage(data.current_page);
+        setTotalPages(data.total_pages);
+        setTotalUsers(data.total_users);
+      } else {
+        // Empty response — use sample data
+        setIsUsingApi(false);
+        setTeams(sampleTeams);
+        setTotalPages(1);
+        setTotalUsers(sampleTeams.length);
+      }
+    } catch {
+      // API unreachable — use sample data
+      console.warn("Leaderboard API unavailable, using sample data");
+      setIsUsingApi(false);
+      setTeams(sampleTeams);
+      setTotalPages(1);
+      setTotalUsers(sampleTeams.length);
+    }
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
+    fetchLeaderboard(1);
+  }, [fetchLeaderboard]);
+
+  useEffect(() => {
     const updateSize = () => {
-      // Scale font size down on smaller screens (9% of viewport width) with a max of 140px and min of 36px
       setFontSize(Math.max(36, Math.min(window.innerWidth * 0.09, 140)));
     };
-    
-    // Set initially
     updateSize();
-    
-    // Update on resize
     window.addEventListener("resize", updateSize);
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
-  const totalPages = Math.ceil(teamsList.length / ITEMS_PER_PAGE);
+  const goToPage = (p: number) => {
+    if (p < 1 || p > totalPages || p === page) return;
+    if (isUsingApi) {
+      fetchLeaderboard(p);
+    } else {
+      setPage(p);
+    }
+  };
+
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages: (number | "...")[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (page > 3) pages.push("...");
+      const start = Math.max(2, page - 1);
+      const end = Math.min(totalPages - 1, page + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (page < totalPages - 2) pages.push("...");
+      pages.push(totalPages);
+    }
+    return pages;
+  };
 
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cinzel+Decorative:wght@700&display=swap');
       `}</style>
-      
-      {/* Ripple Background as wrapper around everything so it catches pointer events */}
+
       <Ripple_bg
         rainIntensity={0.2}
         className="min-h-screen w-full"
@@ -99,9 +153,9 @@ export default function Leaderboard() {
         textConfig={{
           lines: ["LEADERBOARD"],
           fontSize: fontSize,
-          color: "rgba(255,255,255,0.85)", // Made slightly translucent
+          color: "rgba(255,255,255,0.85)",
           fontWeight: "1000",
-          y: 0.20, // Places it at the top 20% of the screen
+          y: 0.20,
         }}
         backgroundColor="#f86d21"
       >
@@ -124,24 +178,44 @@ export default function Leaderboard() {
             <div className="px-7 py-8">
 
               {/* Header */}
-              <div className="flex items-center gap-3 mb-6">
-                <Trophy
-                  size={18}
-                  className="text-amber-400"
-                />
-                <h1 className="text-lg font-semibold tracking-wide text-white">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <Trophy size={18} className="text-amber-400" />
+                  <h1 className="text-lg font-semibold tracking-wide text-white">
                     Top Teams
-                </h1>
+                  </h1>
+                </div>
+                {totalUsers > 0 && (
+                  <span className="text-xs text-white/40 tracking-wider uppercase">
+                    {totalUsers} {totalUsers === 1 ? "player" : "players"}
+                  </span>
+                )}
               </div>
 
               {/* Teams */}
-              <div className="space-y-2">
-                {teamsList
-                  .slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE)
-                  .map((team) => (
+              <div className="space-y-2 relative" style={{ minHeight: "400px" }}>
+                {isLoading ? (
+                  /* Loading Skeleton */
+                  <>
+                    {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-3 rounded-xl px-4 py-2.5 bg-black/30 animate-pulse"
+                      >
+                        <div className="w-10 h-4 bg-white/10 rounded" />
+                        <div className="flex-1 h-4 bg-white/10 rounded" />
+                        <div className="w-16 h-8 bg-white/10 rounded" />
+                      </div>
+                    ))}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="size-8 text-amber-400 animate-spin" />
+                    </div>
+                  </>
+                ) : (
+                  teams.map((team) => (
                     <div
-                      key={team.rank}
-                      className="flex items-center gap-3 rounded-xl px-4 py-2.5 bg-black/30"
+                      key={`${team.rank}-${team.name}`}
+                      className="flex items-center gap-3 rounded-xl px-4 py-2.5 bg-black/30 transition-all duration-200 hover:bg-black/40"
                     >
                       {/* Rank */}
                       <div className="w-10">{rankIcon(team.rank)}</div>
@@ -151,36 +225,101 @@ export default function Leaderboard() {
                         {team.name}
                       </p>
 
-                      {/* Questions */}
+                      {/* Score */}
                       <div className="text-right text-orange-100">
                         <p className="text-[10px] uppercase tracking-widest opacity-80 text-white/60">
-                          Questions
+                          Score
                         </p>
                         <p className="text-lg font-semibold text-white">
                           {team.question}
                         </p>
                       </div>
                     </div>
-                  ))}
+                  ))
+                )}
               </div>
 
-              {/* Pagination Dots */}
-              <div className="flex justify-center gap-2 mt-6">
-                {Array.from({ length: totalPages }).map((_, i) => (
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-1 mt-8">
+                  {/* First Page */}
                   <button
-                    key={i}
-                    onClick={() => setPage(i)}
-                    className="w-2.5 h-2.5 rounded-full transition-all duration-300"
-                    style={{
-                      background:
-                        page === i
-                          ? "rgba(251,191,36,0.9)"
-                          : "rgba(251,191,36,0.25)",
-                      transform: page === i ? "scale(1.3)" : "scale(1)",
-                    }}
+                    onClick={() => goToPage(1)}
+                    disabled={page === 1 || isLoading}
+                    className="p-2 rounded-lg transition-all duration-200 disabled:opacity-20 disabled:cursor-not-allowed hover:bg-white/10"
+                    title="First page"
+                  >
+                    <ChevronsLeft size={16} className="text-amber-400" />
+                  </button>
+
+                  {/* Previous Page */}
+                  <button
+                    onClick={() => goToPage(page - 1)}
+                    disabled={page === 1 || isLoading}
+                    className="p-2 rounded-lg transition-all duration-200 disabled:opacity-20 disabled:cursor-not-allowed hover:bg-white/10"
+                    title="Previous page"
+                  >
+                    <ChevronLeft size={16} className="text-amber-400" />
+                  </button>
+
+                  {/* Page Numbers */}
+                  <div className="flex items-center gap-1 mx-2">
+                    {getPageNumbers().map((p, i) =>
+                      p === "..." ? (
+                        <span
+                          key={`dots-${i}`}
+                          className="w-8 h-8 flex items-center justify-center text-white/40 text-xs"
+                        >
+                          •••
+                        </span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => goToPage(p)}
+                          disabled={isLoading}
+                          className={`w-8 h-8 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                            page === p
+                              ? "bg-amber-400/90 text-black shadow-lg shadow-amber-400/20"
+                              : "text-white/60 hover:bg-white/10 hover:text-white"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
+                  </div>
+
+                  {/* Next Page */}
+                  <button
+                    onClick={() => goToPage(page + 1)}
+                    disabled={page === totalPages || isLoading}
+                    className="p-2 rounded-lg transition-all duration-200 disabled:opacity-20 disabled:cursor-not-allowed hover:bg-white/10"
+                    title="Next page"
+                  >
+                    <ChevronRight size={16} className="text-amber-400" />
+                  </button>
+
+                  {/* Last Page */}
+                  <button
+                    onClick={() => goToPage(totalPages)}
+                    disabled={page === totalPages || isLoading}
+                    className="p-2 rounded-lg transition-all duration-200 disabled:opacity-20 disabled:cursor-not-allowed hover:bg-white/10"
+                    title="Last page"
+                  >
+                    <ChevronsRight size={16} className="text-amber-400" />
+                  </button>
+                </div>
+              )}
+
+              {/* Pagination Dots (kept for single page or fallback) */}
+              {totalPages <= 1 && teams.length > 0 && (
+                <div className="flex justify-center gap-2 mt-6">
+                  <div
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ background: "rgba(251,191,36,0.9)", transform: "scale(1.3)" }}
                   />
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

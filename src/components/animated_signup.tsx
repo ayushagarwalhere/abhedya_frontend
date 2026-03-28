@@ -309,15 +309,25 @@ function SignupPage() {
     setError("");
     setIsLoading(true);
 
-    // Simulate API delay (quick)
-    await new Promise(resolve => setTimeout(resolve, 300));
+    try {
+      const res = await fetch("http://localhost:8080/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: name, email, password }),
+      });
 
-    console.log("✅ Signup successful!");
-    alert("Signup successful! Welcome!");
-    // In a real app, you would:
-    // - Register user
-    // - Store auth token
-    // - Redirect to dashboard
+      const data = await res.json();
+
+      if (res.ok) {
+        // Redirect to verify email page
+        window.location.href = `/verify-email?email=${encodeURIComponent(email)}`;
+        return;
+      } else {
+        setError(data.error || "Signup failed. Please try again.");
+      }
+    } catch {
+      setError("Network error. Please try again later.");
+    }
 
     setIsLoading(false);
   };
@@ -625,6 +635,12 @@ function SignupPage() {
             Already have an account?{" "}
             <a href="/login" className="text-foreground font-medium hover:underline">
               Log In
+            </a>
+          </div>
+          <div className="text-center text-sm text-muted-foreground mt-3">
+            Already signed up?{" "}
+            <a href="/verify-email" className="text-foreground font-medium hover:underline">
+              Verify your email
             </a>
           </div>
         </div>

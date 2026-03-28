@@ -590,6 +590,12 @@ function LoginPage() {
               </div>
             </div>
 
+            <div className="flex justify-end">
+              <a href="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground transition-colors hover:underline">
+                Forgot Password?
+              </a>
+            </div>
+
             {error && (
               <div className="p-3 text-sm text-red-400 bg-red-950/20 border border-red-900/30 rounded-lg">
                 {error}
